@@ -4,7 +4,6 @@ import sounddevice as sd
 from scipy.io.wavfile import read, write
 import numpy as np
 
-
 # Define functions for effects
 def apply_delay(audio_data, delay_time, sampling_rate):
     # Calculate number of samples to delay
@@ -19,9 +18,22 @@ def apply_delay(audio_data, delay_time, sampling_rate):
     return delayed_audio
 
 
-def apply_reverb(audio_data, decay_factor):
-    # Implement reverb effect
-    pass
+def reverb(audio_data, delay, decay):
+    # Create a new array to store the reverb data
+    reverb_data = np.zeros_like(audio_data)
+
+    # Apply the reverb effect to the audio data
+    for i in range(delay, len(audio_data)):
+        reverb_data[i] = audio_data[i] + decay * audio_data[i - delay]
+
+    # Normalize the reverb data
+    max_val = np.max(np.abs(reverb_data))
+    reverb_data = reverb_data / max_val * 0.5  # Normalize the amplitude
+
+    return reverb_data
+
+
+
 
 
 # Parse command-line arguments
@@ -43,15 +55,28 @@ def main():
     # args = parse_arguments()
 
     # Specify input and output file paths
-    input_file = "Punch.wav"
-    output_file = "Delay_output.wav"
+    input_file = "voice-note.wav"
+    # output_file = "Delay_output.wav"
+    output_file = "Reverb_output_Original.wav"
 
     # Read the input WAV file
     samplerate, data = wavfile.read(input_file)
+
+
+    ##DELAY EFFECT CODE
     # Apply the delay effect
-    delayed_data = apply_delay(data, 0.25, samplerate)
-    # Save the delayed audio to a WAV file
-    wavfile.write(output_file, samplerate, delayed_data.astype(np.int16))
+    # delayed_data = apply_delay(data, 0.5, samplerate)
+    # # Save the delayed audio to a WAV file
+    # wavfile.write(output_file, samplerate, delayed_data.astype(np.int16))
+
+    ##REVERB CODE
+    # Test parameters
+    # test_delay = 300  # Delay of 300 samples
+    # test_decay = 0.5  # Decay factor of 0.5
+    # # Apply reverb effect
+    # reverb_audio = reverb(data, test_delay, test_decay)
+    # # Save processed audio to WAV file
+    # wavfile.write(output_file, samplerate, reverb_audio)
 
 
 
