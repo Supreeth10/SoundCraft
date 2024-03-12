@@ -1,4 +1,6 @@
 import argparse
+
+import scipy
 from scipy.io import wavfile
 import sounddevice as sd
 from scipy.io.wavfile import read, write
@@ -33,7 +35,17 @@ def reverb(audio_data, delay, decay):
     return reverb_data
 
 
+def chipmunk_effect(audio_data, sampling_rate, speedup_factor):
+    # Calculate the new length of the resampled audio
+    new_length = int(len(audio_data) / speedup_factor)
 
+    # Resample the audio data to increase playback speed (pitch)
+    chipmunk_audio = scipy.signal.resample(audio_data, new_length)
+
+    # Adjust the sampling rate
+    new_sampling_rate = int(sampling_rate * speedup_factor)
+
+    return chipmunk_audio.astype(np.int16), new_sampling_rate
 
 
 # Parse command-line arguments
@@ -78,7 +90,11 @@ def main():
     # # Save processed audio to WAV file
     # wavfile.write(output_file, samplerate, reverb_audio)
 
-
+    # Apply chipmunk effect
+    speedup_factor = 2
+    chipmunk_audio, new_rate = chipmunk_effect(data, samplerate, speedup_factor)
+    # Save processed audio to WAV file
+    wavfile.write(output_file, new_rate, chipmunk_audio)
 
 
 if __name__ == "__main__":
