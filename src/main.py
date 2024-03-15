@@ -1,9 +1,9 @@
 import argparse
 import scipy
+from scipy.interpolate import interp1d
 from scipy.io import wavfile
 import sounddevice as sd
 import numpy as np
-
 
 
 def apply_delay(audio_data, delay_time, sampling_rate):
@@ -13,7 +13,25 @@ def apply_delay(audio_data, delay_time, sampling_rate):
     delayed_audio = np.concatenate((audio_data, np.zeros(delay_samples)))
     # Apply delay by shifting the audio
     delayed_audio[delay_samples:] += audio_data * 0.5  # Adjust the delay mix factor as needed
-    return delayed_audio
+    return delayed_audio.astype(np.int16)
+
+
+def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
+    # Calculate number of samples to delay
+    delay_samples = int(delay_time * sampling_rate)
+
+    # Create an empty array to store the echoed audio
+    echoed_audio = np.zeros(len(audio_data) + delay_samples)
+
+    # Apply echo effect
+    for i in range(len(audio_data)):
+        # Add original audio to the echoed audio
+        echoed_audio[i] += audio_data[i]
+        # Add delayed audio with decay
+        if i + delay_samples < len(audio_data):
+            echoed_audio[i + delay_samples] += decay_factor * audio_data[i]
+
+    return echoed_audio.astype(np.int16)
 
 
 def reverb(audio_data, delay, decay):
@@ -38,17 +56,42 @@ def chipmunk_effect(audio_data, sampling_rate, speedup_factor):
     return chipmunk_audio.astype(np.int16), new_sampling_rate
 
 
+def reverse_playback(audio_data):
+    # Reverse the order of audio samples
+    reversed_audio = np.flipud(audio_data)
+    return reversed_audio.astype(np.int16)
+
+
+def slow_motion(audio_data, sampling_rate, slowdown_factor):
+    # Calculate the new length of the resampled audio
+    new_length = int(len(audio_data) * slowdown_factor)
+
+    # Create a time array for the resampled audio
+    old_time = np.linspace(0, len(audio_data) / sampling_rate, len(audio_data))
+    new_time = np.linspace(0, len(audio_data) / sampling_rate, new_length)
+
+    # Interpolate the audio data to stretch or shrink it
+    interpolator = interp1d(old_time, audio_data.T)
+    slowed_audio = interpolator(new_time).T
+
+    return slowed_audio.astype(np.int16), sampling_rate
+
+
 # Parse command-line arguments
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Apply effects to WAV file.')
     parser.add_argument('input_file', type=str, help='Input WAV file path')
-    parser.add_argument('effect', choices=['delay', 'reverb','chipmunk'], help='Effect to apply')
+    parser.add_argument('effect', choices=['delay', 'reverb', 'chipmunk', 'reverse_playback', 'slow_mo', 'echo'],
+                        help='Effect to apply')
     parser.add_argument('--output_file', type=str, default='output.wav',
                         help='Output WAV file path (default: output.wav)')
     parser.add_argument('--delay_time', type=float, default=0.5,
                         help='Delay time for delay effect in seconds (default: 0.5)')
     parser.add_argument('--decay_factor', type=float, default=0.5, help='Decay factor for reverb effect (default: 0.5)')
-    parser.add_argument('--speedup_factor',type=float, default=2, help='speedup factor for chipmunk effect (default: 2)')
+    parser.add_argument('--speedup_factor', type=float, default=2,
+                        help='speedup factor for chipmunk effect (default: 2)')
+    parser.add_argument('--slowdown_factor', type=float, default=2,
+                        help='slowdown factor for slow-mo effect (default: 2)')
     return parser.parse_args()
 
 
@@ -64,9 +107,17 @@ def main():
     if args.effect == 'delay':
         processed_audio = apply_delay(audio_data, args.delay_time, samplerate)
     elif args.effect == 'reverb':
-        processed_audio = reverb(audio_data, args.delay_factor, args.decay_factor)
+        # Calculate number of samples for delay based on delay time and sampling rate
+        delay_samples = int(args.delay_time * samplerate)
+        processed_audio = reverb(audio_data, delay_samples, args.decay_factor)
     elif args.effect == 'chipmunk':
         processed_audio, new_rate = chipmunk_effect(audio_data, samplerate, args.speedup_factor)
+    elif args.effect == 'reverse_playback':
+        processed_audio = reverse_playback(audio_data)
+    elif args.effect == 'slow_mo':
+        processed_audio, samplerate = slow_motion(audio_data, samplerate, args.slowdown_factor)
+    elif args.effect == 'echo':
+        processed_audio = apply_echo(audio_data, args.delay_time, args.decay_factor, samplerate)
 
     # Save processed audio to WAV file
     wavfile.write(args.output_file, samplerate, processed_audio.astype(np.int16))
@@ -81,8 +132,6 @@ def main():
     # Play the  output wave using sounddevice
     sd.play(processed_audio.astype(np.int16), samplerate)
     sd.wait()  # Wait for the sound to finish playing
-
-
 
 
 if __name__ == "__main__":
