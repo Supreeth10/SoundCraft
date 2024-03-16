@@ -6,7 +6,7 @@ import sounddevice as sd
 import numpy as np
 
 
-def apply_delay(audio_data, delay_time, sampling_rate):
+def delay(audio_data, delay_time, sampling_rate):
     """
        Apply a delay effect to the audio data.
 
@@ -27,7 +27,7 @@ def apply_delay(audio_data, delay_time, sampling_rate):
     return delayed_audio.astype(np.int16)
 
 
-def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
+def echo(audio_data, delay_time, decay_factor, sampling_rate):
     """
         Apply an echo effect to the audio data.
 
@@ -40,13 +40,10 @@ def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
         Returns:
             ndarray: The echoed audio data.
         """
-
     # Calculate number of samples to delay
     delay_samples = int(delay_time * sampling_rate)
-
     # Create an empty array to store the echoed audio
     echoed_audio = np.zeros(len(audio_data) + delay_samples)
-
     # Apply echo effect
     for i in range(len(audio_data)):
         # Add original audio to the echoed audio
@@ -54,7 +51,6 @@ def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
         # Add delayed audio with decay
         if i + delay_samples < len(audio_data):
             echoed_audio[i + delay_samples] += decay_factor * audio_data[i]
-
     return echoed_audio.astype(np.int16)
 
 
@@ -145,7 +141,7 @@ def slow_motion(audio_data, sampling_rate, slowdown_factor):
     return slowed_audio.astype(np.int16), sampling_rate
 
 
-def apply_distortion(audio_data, gain, fold_amount=0.5):
+def distortion(audio_data, gain, fold_amount=0.5):
     """
         Apply distortion effect to the audio data.
 
@@ -162,48 +158,51 @@ def apply_distortion(audio_data, gain, fold_amount=0.5):
     return folded_audio
 
 
-def pitch_shift(audio_data, sampling_rate, filter):
+def pitch_shift(audio_data, sampling_rate, pitch_filter):
     """
-       Apply a pitch shift effect to the audio data.
+    Apply a pitch shift effect to the audio data.
 
-       Parameters:
-           audio_data (ndarray): The input audio data.
-           sampling_rate (int): The sampling rate of the audio.
-           filter (str): The type of pitch shift filter to apply.
+    Parameters:
+        audio_data (ndarray): The input audio data.
+        sampling_rate (int): The sampling rate of the audio.
+        pitch_filter (str): The type of pitch shift filter to apply ('helium' or 'default').
 
-       Returns:
-           ndarray: The pitch-shifted audio data.
-       """
-    if filter == 'helium':
-        shift = 6000 // 150
+    Returns:
+        ndarray: The pitch-shifted audio data.
+    """
+    if pitch_filter == 'helium':
+        shift_amount = 6000 // 150
     else:
-        shift = 2500 // 100
-    frame_per_sec = sampling_rate // 20
-    file_sz = len(audio_data) // frame_per_sec
+        shift_amount = 2500 // 100
+
+    frames_per_second = sampling_rate // 20
+    num_frames = len(audio_data) // frames_per_second
 
     shifted_audio = np.zeros_like(audio_data)
-    for num in range(file_sz):
-        data = audio_data[num * frame_per_sec: (num + 1) * frame_per_sec]
-        left = data[0::2]
-        right = data[1::2]
+    for frame_num in range(num_frames):
+        frame_start = frame_num * frames_per_second
+        frame_end = (frame_num + 1) * frames_per_second
+        frame_data = audio_data[frame_start:frame_end]
+        left_channel = frame_data[0::2]
+        right_channel = frame_data[1::2]
 
         # Take DFT
-        left_freq = np.fft.rfft(left)
-        right_freq = np.fft.rfft(right)
+        left_freq = np.fft.rfft(left_channel)
+        right_freq = np.fft.rfft(right_channel)
 
-        # Scale It Up or Down
-        left_freq = np.roll(left_freq, shift)
-        right_freq = np.roll(right_freq, shift)
-        left_freq[0:shift] = 0
-        right_freq[0:shift] = 0
+        # Apply frequency shift
+        left_freq_shifted = np.roll(left_freq, shift_amount)
+        right_freq_shifted = np.roll(right_freq, shift_amount)
+        left_freq_shifted[0:shift_amount] = 0
+        right_freq_shifted[0:shift_amount] = 0
 
         # Take inverse DFT
-        left = np.fft.irfft(left_freq)
-        right = np.fft.irfft(right_freq)
+        left_shifted = np.fft.irfft(left_freq_shifted)
+        right_shifted = np.fft.irfft(right_freq_shifted)
 
-        # Put it altogether
-        sig = np.column_stack((left, right)).ravel().astype(np.int16)
-        shifted_audio[num * frame_per_sec: (num + 1) * frame_per_sec] = sig
+        # Combine the shifted channels
+        combined_channels = np.column_stack((left_shifted, right_shifted)).ravel().astype(np.int16)
+        shifted_audio[frame_start:frame_end] = combined_channels
 
     return shifted_audio
 
@@ -234,7 +233,8 @@ def parse_arguments():
                         help='slowdown factor for slow-mo effect (default: 2)')
     parser.add_argument('--gain', type=float, default=1.2,
                         help='gain for distortion effect.Higher gain values result in more distortion. (default: 1.2)')
-    parser.add_argument('--filter', type=str, default='robot', help='Choice between helium or robot effect for pitch shift (default: robot)')
+    parser.add_argument('--filter', type=str, default='robot',
+                        help='Choice between helium or robot effect for pitch shift (default: robot)')
     return parser.parse_args()
 
 
@@ -248,7 +248,7 @@ def main():
     samplerate, audio_data = wavfile.read(args.input_file)
     # Apply selected effect
     if args.effect == 'delay':
-        processed_audio = apply_delay(audio_data, args.delay_time, samplerate)
+        processed_audio = delay(audio_data, args.delay_time, samplerate)
     elif args.effect == 'reverb':
         # Calculate number of samples for delay based on delay time and sampling rate
         delay_samples = int(args.delay_time * samplerate)
@@ -260,13 +260,11 @@ def main():
     elif args.effect == 'slow_mo':
         processed_audio, samplerate = slow_motion(audio_data, samplerate, args.slowdown_factor)
     elif args.effect == 'echo':
-        processed_audio = apply_echo(audio_data, args.delay_time, args.decay_factor, samplerate)
+        processed_audio = echo(audio_data, args.delay_time, args.decay_factor, samplerate)
     elif args.effect == 'distortion':
-        processed_audio = apply_distortion(audio_data, args.gain)
+        processed_audio = distortion(audio_data, args.gain)
     elif args.effect == 'pitch_shift':
         processed_audio = pitch_shift(audio_data, samplerate, args.filter)
-
-
 
     # Save processed audio to WAV file
     wavfile.write(args.output_file, samplerate, processed_audio)
