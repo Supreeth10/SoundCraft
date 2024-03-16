@@ -7,16 +7,40 @@ import numpy as np
 
 
 def apply_delay(audio_data, delay_time, sampling_rate):
+    """
+       Apply a delay effect to the audio data.
+
+       Parameters:
+           audio_data (ndarray): The input audio data.
+           delay_time (float): The delay time in seconds.
+           sampling_rate (int): The sampling rate of the audio.
+
+       Returns:
+           ndarray: The delayed audio data.
+       """
     # Calculate number of samples to delay
     delay_samples = int(delay_time * sampling_rate)
     # Pad the audio with zeros to accommodate the delay
     delayed_audio = np.concatenate((audio_data, np.zeros(delay_samples)))
     # Apply delay by shifting the audio
-    delayed_audio[delay_samples:] += audio_data * 0.5  # Adjust the delay mix factor as needed
+    delayed_audio[delay_samples:] += audio_data * 0.5  # 0.5 is the delay mix factor
     return delayed_audio.astype(np.int16)
 
 
 def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
+    """
+        Apply an echo effect to the audio data.
+
+        Parameters:
+            audio_data (ndarray): The input audio data.
+            delay_time (float): The delay time in seconds.
+            decay_factor (float): The decay factor for the echo effect.
+            sampling_rate (int): The sampling rate of the audio.
+
+        Returns:
+            ndarray: The echoed audio data.
+        """
+
     # Calculate number of samples to delay
     delay_samples = int(delay_time * sampling_rate)
 
@@ -35,6 +59,17 @@ def apply_echo(audio_data, delay_time, decay_factor, sampling_rate):
 
 
 def reverb(audio_data, delay, decay):
+    """
+       Apply a reverb effect to the audio data.
+
+       Parameters:
+           audio_data (ndarray): The input audio data.
+           delay (int): The delay in samples for the reverb effect.
+           decay (float): The decay factor for the reverb effect.
+
+       Returns:
+           ndarray: The reverberated audio data.
+       """
     # Create a new array to store the reverb data
     reverb_data = np.zeros_like(audio_data)
     # Apply the reverb effect to the audio data
@@ -47,6 +82,18 @@ def reverb(audio_data, delay, decay):
 
 
 def chipmunk_effect(audio_data, sampling_rate, speedup_factor):
+    """
+        Apply a chipmunk effect to the audio data.
+
+        Parameters:
+            audio_data (ndarray): The input audio data.
+            sampling_rate (int): The sampling rate of the audio.
+            speedup_factor (float): The speedup factor for the chipmunk effect.
+
+        Returns:
+            ndarray: The chipmunk-effect audio data.
+            int: The new sampling rate after applying the effect.
+        """
     # Calculate the new length of the resampled audio
     new_length = int(len(audio_data) / speedup_factor)
     # Resample the audio data to increase playback speed (pitch)
@@ -57,12 +104,33 @@ def chipmunk_effect(audio_data, sampling_rate, speedup_factor):
 
 
 def reverse_playback(audio_data):
+    """
+       Reverse the playback of the input audio data.
+
+       Parameters:
+           audio_data (ndarray): The input audio data.
+
+       Returns:
+           ndarray: The audio data with reversed playback.
+       """
     # Reverse the order of audio samples
     reversed_audio = np.flipud(audio_data)
     return reversed_audio.astype(np.int16)
 
 
 def slow_motion(audio_data, sampling_rate, slowdown_factor):
+    """
+        Apply a slow motion effect to the input audio data.
+
+        Parameters:
+            audio_data (ndarray): The input audio data.
+            sampling_rate (int): The sampling rate of the audio.
+            slowdown_factor (float): The slowdown factor.
+
+        Returns:
+            ndarray: The audio data with the slow motion effect applied.
+            int: The new sampling rate after applying the effect.
+        """
     # Calculate the new length of the resampled audio
     new_length = int(len(audio_data) * slowdown_factor)
 
@@ -77,21 +145,96 @@ def slow_motion(audio_data, sampling_rate, slowdown_factor):
     return slowed_audio.astype(np.int16), sampling_rate
 
 
+def apply_distortion(audio_data, gain, fold_amount=0.5):
+    """
+        Apply distortion effect to the audio data.
+
+        Parameters:
+            audio_data (ndarray): The input audio data.
+            gain (float): The gain for distortion effect.
+            fold_amount (float): The amount to fold the audio data.
+
+        Returns:
+            ndarray: The distorted audio data.
+        """
+    # Apply distortion using wave folding
+    folded_audio = np.clip(audio_data * gain, -fold_amount, fold_amount)
+    return folded_audio
+
+
+def pitch_shift(audio_data, sampling_rate, filter):
+    """
+       Apply a pitch shift effect to the audio data.
+
+       Parameters:
+           audio_data (ndarray): The input audio data.
+           sampling_rate (int): The sampling rate of the audio.
+           filter (str): The type of pitch shift filter to apply.
+
+       Returns:
+           ndarray: The pitch-shifted audio data.
+       """
+    if filter == 'helium':
+        shift = 6000 // 150
+    else:
+        shift = 2500 // 100
+    frame_per_sec = sampling_rate // 20
+    file_sz = len(audio_data) // frame_per_sec
+
+    shifted_audio = np.zeros_like(audio_data)
+    for num in range(file_sz):
+        data = audio_data[num * frame_per_sec: (num + 1) * frame_per_sec]
+        left = data[0::2]
+        right = data[1::2]
+
+        # Take DFT
+        left_freq = np.fft.rfft(left)
+        right_freq = np.fft.rfft(right)
+
+        # Scale It Up or Down
+        left_freq = np.roll(left_freq, shift)
+        right_freq = np.roll(right_freq, shift)
+        left_freq[0:shift] = 0
+        right_freq[0:shift] = 0
+
+        # Take inverse DFT
+        left = np.fft.irfft(left_freq)
+        right = np.fft.irfft(right_freq)
+
+        # Put it altogether
+        sig = np.column_stack((left, right)).ravel().astype(np.int16)
+        shifted_audio[num * frame_per_sec: (num + 1) * frame_per_sec] = sig
+
+    return shifted_audio
+
+
 # Parse command-line arguments
 def parse_arguments():
+    """
+        Parse command-line arguments.
+
+        Returns:
+            Namespace: An object containing parsed arguments.
+        """
     parser = argparse.ArgumentParser(description='Apply effects to WAV file.')
     parser.add_argument('input_file', type=str, help='Input WAV file path')
-    parser.add_argument('effect', choices=['delay', 'reverb', 'chipmunk', 'reverse_playback', 'slow_mo', 'echo'],
+    parser.add_argument('effect',
+                        choices=['delay', 'reverb', 'chipmunk', 'reverse_playback', 'slow_mo', 'echo', 'distortion',
+                                 'pitch_shift'],
                         help='Effect to apply')
     parser.add_argument('--output_file', type=str, default='output.wav',
                         help='Output WAV file path (default: output.wav)')
-    parser.add_argument('--delay_time', type=float, default=0.5,
+    parser.add_argument('--delay_time', type=float, default=0.25,
                         help='Delay time for delay effect in seconds (default: 0.5)')
-    parser.add_argument('--decay_factor', type=float, default=0.5, help='Decay factor for reverb effect (default: 0.5)')
+    parser.add_argument('--decay_factor', type=float, default=0.75,
+                        help='Decay factor for reverb effect (default: 0.5)')
     parser.add_argument('--speedup_factor', type=float, default=2,
                         help='speedup factor for chipmunk effect (default: 2)')
     parser.add_argument('--slowdown_factor', type=float, default=2,
                         help='slowdown factor for slow-mo effect (default: 2)')
+    parser.add_argument('--gain', type=float, default=1.2,
+                        help='gain for distortion effect.Higher gain values result in more distortion. (default: 1.2)')
+    parser.add_argument('--filter', type=str, default='robot', help='Choice between helium or robot effect for pitch shift (default: robot)')
     return parser.parse_args()
 
 
@@ -118,9 +261,15 @@ def main():
         processed_audio, samplerate = slow_motion(audio_data, samplerate, args.slowdown_factor)
     elif args.effect == 'echo':
         processed_audio = apply_echo(audio_data, args.delay_time, args.decay_factor, samplerate)
+    elif args.effect == 'distortion':
+        processed_audio = apply_distortion(audio_data, args.gain)
+    elif args.effect == 'pitch_shift':
+        processed_audio = pitch_shift(audio_data, samplerate, args.filter)
+
+
 
     # Save processed audio to WAV file
-    wavfile.write(args.output_file, samplerate, processed_audio.astype(np.int16))
+    wavfile.write(args.output_file, samplerate, processed_audio)
 
     print("Playing input audio file")
     # Play the  output wave using sounddevice
@@ -130,7 +279,7 @@ def main():
     print("Playing output audio file")
 
     # Play the  output wave using sounddevice
-    sd.play(processed_audio.astype(np.int16), samplerate)
+    sd.play(processed_audio, samplerate)
     sd.wait()  # Wait for the sound to finish playing
 
 
